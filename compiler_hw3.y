@@ -120,7 +120,7 @@ primary_expression
     | constant {
     	
     }
-    //| LB expression RB { printf("ajfsafaskfajfafjafafk"); }
+    //| LB expression RB
 ;
 
 constant
