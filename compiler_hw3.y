@@ -54,8 +54,11 @@ char jFileContent[4096];
 
 struct indexAndTypeStruct checkIndex(char *, int);
 void arithmetic(char *, int, char*);
+int ifbuffer;
+int labelnumber;
+int whileCount;
+int inLoop;
 
-    
 %}
 
 /* Use variable or self-defined structure to represent
@@ -137,8 +140,36 @@ postfix_expression
     | postfix_expression LSB expression RSB
     | postfix_expression LB RB
     //| postfix_expression LB argument_expression_list RB
-    | postfix_expression INC
-    | postfix_expression DEC
+    | primary_expression INC {
+    	arithmetic($1, 0, "1");
+    	struct indexAndTypeStruct temp;
+    	temp = checkIndex($1, scopeLevel - inLoop);
+    	if(temp.index == -1) {
+    		fprintf(file, "\tputstatic compiler_hw3/%s %c\n", $1, temp.type);
+    		}
+    	else {
+    		switch(temp.type) {
+    				case 'I': fprintf(file, "\tistore %d\n", temp.index); break;
+    				case 'F': fprintf(file, "\tfstore %d\n", temp.index); break;
+    				default: break;
+    				}
+    		}
+    	}
+    | postfix_expression DEC  {
+    	arithmetic($1, 1, "1");
+    	struct indexAndTypeStruct temp;
+    	temp = checkIndex($1, scopeLevel - inLoop);
+    	if(temp.index == -1) {
+    		fprintf(file, "\tputstatic compiler_hw3/%s %c\n", $1, temp.type);
+    		}
+    	else {
+    		switch(temp.type) {
+    				case 'I': fprintf(file, "\tistore %d\n", temp.index); break;
+    				case 'F': fprintf(file, "\tfstore %d\n", temp.index); break;
+    				default: break;
+    				}
+    		}
+    	}
 ;
 /*
 argument_expression_list
@@ -194,17 +225,40 @@ shift_expression
 ;
 
 relational_expression
-    : shift_expression
+    : shift_expression /*
     | relational_expression LT shift_expression
     | relational_expression MT shift_expression
     | relational_expression LTE shift_expression
-    | relational_expression MTE shift_expression
+    | relational_expression MTE shift_expression */
+    | primary_expression LT primary_expression {
+    	arithmetic($1, 5, $3);
+    	ifbuffer = 2;
+    	}
+    | primary_expression MT primary_expression {
+    	arithmetic($1, 5, $3);
+    	ifbuffer = 3;
+    	}
+    | primary_expression LTE primary_expression {
+    	arithmetic($1, 5, $3);
+    	ifbuffer = 4;
+    	}
+    | primary_expression MTE primary_expression {
+    	arithmetic($1, 5, $3);
+    	ifbuffer = 5;
+    	}
 ;
 
 equality_expression
     : relational_expression
-    | equality_expression EQ relational_expression
-    | equality_expression NE relational_expression
+    //| equality_expression EQ relational_expression
+    | primary_expression EQ primary_expression {
+    	arithmetic($1, 5, $3);
+    	ifbuffer = 0;
+    	}
+    | primary_expression NE primary_expression {
+    	arithmetic($1, 5, $3);
+    	ifbuffer = 1;
+    	}
 ;
 
 and_expression
@@ -244,7 +298,7 @@ assignment_expression
     	// first check 
     	// check if the variable is in the table
     	struct indexAndTypeStruct temp;
-    	temp = checkIndex($1, scopeLevel);
+    	temp = checkIndex($1, scopeLevel - inLoop);
     	if(temp.index == -1) {
     		fprintf(file, "\tputstatic compiler_hw3/%s %c\n", $1, temp.type);
     		}
@@ -381,16 +435,85 @@ expression_statement
 ;
 
 selection_statement
-    : IF LB expression RB statement ELSE statement
-    | IF LB expression RB statement
+    : selection_statement2 statement ELSE statement
+    | selection_statement2 statement elseifes ELSE statement
+;
+
+selection_statement2
+	: IF LB expression RB {
+		labelnumber = 0;
+		switch(ifbuffer) {
+			case 0:	fprintf(file, "\tifne Label_%d\n", labelnumber); break;
+			case 1: fprintf(file, "\tifeq Label_%d\n", labelnumber); break;
+			case 2: fprintf(file, "\tifge Label_%d\n", labelnumber); break;
+			case 3: fprintf(file, "\tifle Label_%d\n", labelnumber); break;
+			case 4: fprintf(file, "\tifgt Label_%d\n", labelnumber); break;
+			case 5: fprintf(file, "\tiflt Label_%d\n", labelnumber); break;
+			default: break;
+			}
+		labelnumber = labelnumber + 1;
+		}
+;
+
+elseifes
+	: elseifes elseifesss statement
+	| elseifesss statement
+;
+
+elseifesss
+	: ELSE IF LB relational_expression RB {
+		switch(ifbuffer) {
+			case 0:	fprintf(file, "\tifne Label_%d\n", labelnumber); break;
+			case 1: fprintf(file, "\tifeq Label_%d\n", labelnumber); break;
+			case 2: fprintf(file, "\tifge Label_%d\n", labelnumber); break;
+			case 3: fprintf(file, "\tifle Label_%d\n", labelnumber); break;
+			case 4: fprintf(file, "\tifgt Label_%d\n", labelnumber); break;
+			case 5: fprintf(file, "\tiflt Label_%d\n", labelnumber); break;
+			default: break;
+			}
+		labelnumber = labelnumber + 1;
+		}
 ;
 
 iteration_statement
-    : WHILE LB expression RB statement
+    : while_statement statement {
+    	fprintf(file, "\tgoto LABEL_BEGIN%d\n", whileCount);
+    	fprintf(file, "LABEL_FALSE%d:\n", whileCount);
+    	fprintf(file, "\tgoto EXIT_%d\n", whileCount);
+    	fprintf(file, "EXIT_%d:\n", whileCount);
+    	
+    	inLoop = 0;
+    	whileCount = whileCount + 1;
+    	}
+    	
     | FOR LB expression_statement expression_statement RB statement
     | FOR LB expression_statement expression_statement expression RB statement
     | FOR LB declaration expression_statement RB statement
     | FOR LB declaration expression_statement expression RB statement
+;
+
+whilehead
+	: WHILE {
+		fprintf(file, "LABEL_BEGIN%d:\n", whileCount);
+		}
+;
+
+while_statement
+	: whilehead LB expression RB {
+		switch(ifbuffer) {
+			case 0: fprintf(file, "\tifeq LABEL_TRUE%d\n", whileCount); break;
+			case 1: fprintf(file, "\tifne LABEL_TRUE%d\n", whileCount); break;
+			case 2: fprintf(file, "\tiflt LABEL_TRUE%d\n", whileCount); break;
+			case 3: fprintf(file, "\tifgt LABEL_TRUE%d\n", whileCount); break;
+			case 4: fprintf(file, "\tifle LABEL_TRUE%d\n", whileCount); break;
+			case 5: fprintf(file, "\tifge LABEL_TRUE%d\n", whileCount); break;
+			default: break;
+			}
+		fprintf(file, "\tgoto LABEL_FALSE%d\n", whileCount);
+		fprintf(file, "LABEL_TRUE%d:\n", whileCount);
+		
+		inLoop = 1;
+		}
 ;
 
 jump_statement
@@ -411,7 +534,7 @@ jump_statement
     	}
     | RET ID SEMICOLON {	// RET expression SEMICOLON
     	struct indexAndTypeStruct temp;
-    	temp = checkIndex($2, scopeLevel);
+    	temp = checkIndex($2, scopeLevel - inLoop);
     	
     	if(temp.index == -1) { // return a global variable
     		fprintf(file, "\tgetstatic compiler_hw3/%s\n", $2);
@@ -451,7 +574,7 @@ jump_statement
 print_statement
 	: PRINT LB ID RB SEMICOLON {
 		struct indexAndTypeStruct temp;
-    	temp = checkIndex($3, scopeLevel);
+		temp = checkIndex($3, scopeLevel - inLoop);
     	if(temp.index == -1) {
     		fprintf(file, "\tgetstatic compiler_hw3/%s %c\n", $3, temp.type);
     		}
@@ -491,7 +614,7 @@ function_statement_semicolon
 	: function_statement SEMICOLON
 	| ID assignment_operator function_statement SEMICOLON {
 		struct indexAndTypeStruct temp;
-		temp = checkIndex($1, scopeLevel);
+		temp = checkIndex($1, scopeLevel - inLoop);
 		if(temp.index == -2) {	// global
 			fprintf(file, "\tputstatic compiler_hw3/%s %c\n", $1, temp.type);
 		}
@@ -514,7 +637,7 @@ function_statement
 			}
 		else {
 			struct indexAndTypeStruct temp;
-			temp = checkIndex($3, scopeLevel);
+			temp = checkIndex($3, scopeLevel - inLoop);
 			if(temp.index == -1)
 				fprintf(file, "\tgetstatic compiler_hw3/%s %c\n", $3, temp.type);
 			else {
@@ -610,6 +733,8 @@ int main(int argc, char** argv)
 	// new to hw3
 	localVariableIndex = 0;
 	intFloatString = -1;
+	whileCount = 0;
+	inLoop = 0;
 
 	int result;
 	result = yyparse();
@@ -802,7 +927,7 @@ void dump_symbol(int scope) {
 void arithmetic(char *num1, int ari, char *num2) {
     	int intOrFloat = 0;	// 0 int 1 float
     	struct indexAndTypeStruct temp;
-    	temp = checkIndex(num1, scopeLevel);
+    	temp = checkIndex(num1, scopeLevel - inLoop);
     	if(temp.index == -2) {	// is a number
     		if(strstr(num1, ".") != NULL) {	// is a float
     			fprintf(file, "\tldc %s\n", num1);
@@ -825,7 +950,7 @@ void arithmetic(char *num1, int ari, char *num2) {
     			}
     		}
     	
-    	temp = checkIndex(num2, scopeLevel);
+    	temp = checkIndex(num2, scopeLevel - inLoop);
     	if(temp.index == -2) {	// is a number
     		if(strstr(num2, ".") != NULL)	// is a float
     			fprintf(file, "\tldc %s\n", num2);
@@ -854,6 +979,7 @@ void arithmetic(char *num1, int ari, char *num2) {
 			case 2: strcat(operand, "mul"); break;
 			case 3: strcat(operand, "div"); break;
 			case 4: strcat(operand, "mod"); break;
+			case 5: strcat(operand, "sub"); break;
 			default: break;
 			}
 		fprintf(file, "\t%s\n", operand);

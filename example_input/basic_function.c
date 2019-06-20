@@ -1,12 +1,17 @@
-int foo() {
-   return 10;
+int foo(int a) {
+   a = a + 6 * 3;
+   return a;
 }
 
-
+void lol(int a) {
+    print(a);
+	return;
+}
 
 void main(){
    int a;
-   a = foo();
+   a = foo(4);
+   lol(a);
    return;
 }
 
