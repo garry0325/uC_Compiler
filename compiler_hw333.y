@@ -58,7 +58,6 @@ int ifbuffer;
 int labelnumber;
 int whileCount;
 int inLoop;
-char arithmeticBuffer[1024];
 
 %}
 
@@ -143,9 +142,6 @@ postfix_expression
     //| postfix_expression LB argument_expression_list RB
     | primary_expression INC {
     	arithmetic($1, 0, "1");
-    	fprintf(file, "%s", arithmeticBuffer);
-    	strcpy(arithmeticBuffer, "");
-    	
     	struct indexAndTypeStruct temp;
     	temp = checkIndex($1, scopeLevel - inLoop);
     	if(temp.index == -1) {
@@ -161,9 +157,6 @@ postfix_expression
     	}
     | postfix_expression DEC  {
     	arithmetic($1, 1, "1");
-
-    	fprintf(file, "%s", arithmeticBuffer);
-    	strcpy(arithmeticBuffer, "");
     	struct indexAndTypeStruct temp;
     	temp = checkIndex($1, scopeLevel - inLoop);
     	if(temp.index == -1) {
@@ -208,15 +201,12 @@ multiplicative_expression
     : cast_expression { $$ = $1; }
     | multiplicative_expression MUL cast_expression {
     	arithmetic($1, 2, $3);
-    	$$ = "done";
     	}
     | multiplicative_expression DIV cast_expression {
     	arithmetic($1, 3, $3);
-    	$$ = "done";
     	}
     | multiplicative_expression MOD cast_expression {
     	arithmetic($1, 4, $3);
-    	$$ = "done";
     	}
 ;
 
@@ -226,7 +216,6 @@ additive_expression
     		arithmetic($1, 0, $3);
     	}
     | additive_expression SUB multiplicative_expression {
-	    	fprintf(file, "sub");
     		arithmetic($1, 1, $3);
     	}
 ;
@@ -308,9 +297,6 @@ assignment_expression
     | ID assignment_operator assignment_expression {	// lhs of the '='
     	// first check 
     	// check if the variable is in the table
-    	fprintf(file, "%s", arithmeticBuffer);
-    	strcpy(arithmeticBuffer, "");
-    	
     	struct indexAndTypeStruct temp;
     	temp = checkIndex($1, scopeLevel - inLoop);
     	if(temp.index == -1) {
@@ -749,7 +735,6 @@ int main(int argc, char** argv)
 	intFloatString = -1;
 	whileCount = 0;
 	inLoop = 0;
-	strcpy(arithmeticBuffer, "");
 
 	int result;
 	result = yyparse();
@@ -940,66 +925,47 @@ void dump_symbol(int scope) {
 }
 
 void arithmetic(char *num1, int ari, char *num2) {
-		char bu[128], buff[256];
-		strcpy(buff, "");
     	int intOrFloat = 0;	// 0 int 1 float
+    	struct indexAndTypeStruct temp;
+    	temp = checkIndex(num1, scopeLevel - inLoop);
+    	if(temp.index == -2) {	// is a number
+    		if(strstr(num1, ".") != NULL) {	// is a float
+    			fprintf(file, "\tldc %s\n", num1);
+    			intOrFloat = 1;
+    			}
+    		else	//is an int
+    			fprintf(file, "\tldc %s\n", num1);
+    		}
+    	else if(temp.index == -1){	// is a global variable
+    		fprintf(file, "\tgetstatic compiler_hw3/%s %c\n", num1, temp.type);
+    		if(temp.index == 'F')
+    			intOrFloat = 1;
+    		}
+    	else {	// is a local variable
+    		if(temp.type == 'I')
+    			fprintf(file, "\tiload %d\n", temp.index);
+    		else if(temp.type == 'F') {
+    			fprintf(file, "\tfload %d\n", temp.index);
+    			intOrFloat = 1;
+    			}
+    		}
     	
-    	
-		struct indexAndTypeStruct temp;
-    	
-    	if(strcmp(num1, "done") != 0) {
-			temp = checkIndex(num1, scopeLevel - inLoop);
-			if(temp.index == -2) {	// is a number
-				if(strstr(num1, ".") != NULL) {	// is a float
-					sprintf(bu, "\tldc %s\n", num1);
-					intOrFloat = 1;
-					}
-				else	//is an int
-					sprintf(bu, "\tldc %s\n", num1);
-				}
-			else if(temp.index == -1){	// is a global variable
-				sprintf(bu, "\tgetstatic compiler_hw3/%s %c\n", num1, temp.type);
-				if(temp.index == 'F')
-					intOrFloat = 1;
-				}
-			else {	// is a local variable
-				if(temp.type == 'I')
-					sprintf(bu, "\tiload %d\n", temp.index);
-				else if(temp.type == 'F') {
-					sprintf(bu, "\tfload %d\n", temp.index);
-					intOrFloat = 1;
-					}
-				}
-			strcat(buff, bu);
-			}
-		else {
-			strcat(buff, arithmeticBuffer);
-			}
-		
-		
-		if(strcmp(num2, "done") != 0) {
-			temp = checkIndex(num2, scopeLevel - inLoop);
-			if(temp.index == -2) {	// is a number
-				if(strstr(num2, ".") != NULL)	// is a float
-					sprintf(bu, "\tldc %s\n", num2);
-				else{	//is an int
-					sprintf(bu, "\tldc %s\n", num2);
-					}
-				}
-			else if(temp.index == -1)	// is a global variable
-				sprintf(bu, "\tgetstatic compiler_hw3/%s %c\n", num2, temp.type);
-			else {	// is a local variable
-				if(temp.type == 'I')
-					sprintf(bu, "\tiload %d\n", temp.index);
-				else if(temp.type == 'F')
-					sprintf(bu, "\tfload %d\n", temp.index);
-				}
-			strcat(buff, bu);
-			}
-		else {
-			strcat(buff, arithmeticBuffer);
-			}
-    	
+    	temp = checkIndex(num2, scopeLevel - inLoop);
+    	if(temp.index == -2) {	// is a number
+    		if(strstr(num2, ".") != NULL)	// is a float
+    			fprintf(file, "\tldc %s\n", num2);
+    		else{	//is an int
+    			fprintf(file, "\tldc %s\n", num2);
+    			}
+    		}
+    	else if(temp.index == -1)	// is a global variable
+    		fprintf(file, "\tgetstatic compiler_hw3/%s %c\n", num2, temp.type);
+    	else {	// is a local variable
+    		if(temp.type == 'I')
+    			fprintf(file, "\tiload %d\n", temp.index);
+    		else if(temp.type == 'F')
+    			fprintf(file, "\tfload %d\n", temp.index);
+    		}
     		
     	char operand[20];
     	if(intOrFloat == 0)
@@ -1016,9 +982,7 @@ void arithmetic(char *num1, int ari, char *num2) {
 			case 5: strcat(operand, "sub"); break;
 			default: break;
 			}
-		sprintf(bu, "\t%s\n", operand);
-		strcat(buff, bu);
-		strcat(arithmeticBuffer, buff);
+		fprintf(file, "\t%s\n", operand);
 		return;
 }
 

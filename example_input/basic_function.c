@@ -1,5 +1,5 @@
 int foo(int a) {
-   a = a + 6 * 3;
+   a = a + 6;
    return a;
 }
 
